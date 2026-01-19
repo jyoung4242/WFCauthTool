@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>WFC Rule Authoring Tool v3</title>
+    <title>WFC Rule Authoring Tool v4</title>
     <style>
       * {
         margin: 0;
@@ -350,6 +350,10 @@
         <label
           >Tile Height (px)
           <input type="number" id="tileHeight" value="16" min="1" />
+        </label>
+        <label
+          >Import Rules JSON (optional)
+          <input type="file" id="rulesImport" accept=".json,application/json" />
         </label>
 
         <h3>Collision Strategy</h3>
@@ -923,6 +927,64 @@
       // JSON EXPORT FUNCTIONALITY
       // ============================================================================
 
+      function importRulesFromJSON(file) {
+        const reader = new FileReader();
+        reader.onload = e => {
+          try {
+            const data = JSON.parse(e.target.result);
+
+            // Validate the JSON structure
+            if (!data.adjacencyRules || !data.tiles) {
+              showError("Invalid rules JSON format - missing required fields");
+              return;
+            }
+
+            // Check if tile count matches
+            if (data.tiles.length !== state.tiles.length) {
+              showError(`Tile count mismatch: JSON has ${data.tiles.length} tiles, but tileset has ${state.tiles.length} tiles`);
+              return;
+            }
+
+            // Import the rules
+            const directionNames = ["up", "right", "down", "left"];
+            state.rules = {};
+
+            for (const tileId in data.adjacencyRules) {
+              const numericTileId = parseInt(tileId);
+              state.rules[numericTileId] = {
+                0: new Set(),
+                1: new Set(),
+                2: new Set(),
+                3: new Set(),
+              };
+
+              const tileRules = data.adjacencyRules[tileId];
+              directionNames.forEach((dirName, dirIndex) => {
+                if (tileRules[dirName]) {
+                  tileRules[dirName].forEach(allowedTileId => {
+                    state.rules[numericTileId][dirIndex].add(allowedTileId);
+                  });
+                }
+              });
+            }
+
+            // Update UI
+            renderRulesPanel();
+            showMessage(`Rules imported successfully! Loaded ${Object.keys(data.adjacencyRules).length} tile rule sets.`);
+
+            // If metadata includes tile dimensions, offer to update them
+            if (data.metadata && (data.metadata.tileWidth !== state.tileWidth || data.metadata.tileHeight !== state.tileHeight)) {
+              console.log(
+                `Note: JSON tile size (${data.metadata.tileWidth}x${data.metadata.tileHeight}) differs from current (${state.tileWidth}x${state.tileHeight})`,
+              );
+            }
+          } catch (error) {
+            showError(`Failed to parse JSON: ${error.message}`);
+          }
+        };
+        reader.readAsText(file);
+      }
+
       function exportRulesToJSON() {
         if (state.tiles.length === 0) {
           showError("No tileset loaded");
@@ -1290,6 +1352,18 @@
       document.getElementById("tilesetUpload").addEventListener("change", e => {
         if (e.target.files.length > 0) {
           loadTileset(e.target.files[0]);
+        }
+      });
+
+      document.getElementById("rulesImport").addEventListener("change", e => {
+        if (e.target.files.length > 0) {
+          if (state.tiles.length === 0) {
+            showError("Please upload a tileset before importing rules");
+            e.target.value = ""; // Clear the file input
+            return;
+          }
+          importRulesFromJSON(e.target.files[0]);
+          e.target.value = ""; // Clear the file input for potential re-import
         }
       });
 
